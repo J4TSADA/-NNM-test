@@ -74,4 +74,3 @@ E01,สมใจ,2026-11-23,08:00,16:00
 - `docs/code-walkthrough.md`: อธิบายโค้ดแบบเล่าเรื่อง พร้อม quiz
 - `docs/tdd-evidence.md`: หลักฐานเทสต์แดงก่อนเขียว
 - `docs/go-no-go.md`: checklist, rollback plan, env vars
-- `docs/demo-script.md`: สคริปต์ demo 15 นาที

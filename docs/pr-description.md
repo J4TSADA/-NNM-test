@@ -25,7 +25,7 @@
 
 ## เอกสาร
 
-- `docs/discover.md`, `intent.md`, `README.md`, `docs/code-walkthrough.md` (มี quiz), `docs/go-no-go.md`, `docs/demo-script.md`
+- `docs/discover.md`, `intent.md`, `README.md`, `docs/code-walkthrough.md` (มี quiz), `docs/go-no-go.md`
 
 ## วิธีทดสอบ
 
