@@ -60,7 +60,7 @@ describe('summarizeWeek', () => {
 
   it('มีภาพรวม 3 บรรทัด (AC6)', () => {
     expect(summary().overview).toEqual([
-      'พนักงาน 3 คน ทำงานรวม 113.5 ชั่วโมง (2026-11-23 ถึง 2026-11-28)',
+      'พนักงาน 3 คน ทำงานรวม 113.5 ชั่วโมง (23 พ.ย. 2569 ถึง 28 พ.ย. 2569)',
       'มาสายรวม 5 ครั้ง คนที่มาสายบ่อยที่สุดคือ บุญมี (3 ครั้ง)',
       'OT รวม 4.5 ชั่วโมง คนที่ทำ OT มากที่สุดคือ สมใจ (3 ชั่วโมง)',
     ])
@@ -87,7 +87,7 @@ describe('summarizeWeek', () => {
       overtimeHours: 0,
     })
     expect(result.warnings).toEqual([
-      { name: 'ทดสอบ', date: '2026-11-24', message: 'ไม่มีเวลาออก ชั่วโมงของวันนี้ไม่ถูกนับ' },
+      { name: 'ทดสอบ', date: '24 พ.ย. 2569', message: 'ไม่มีเวลาออก ชั่วโมงของวันนี้ไม่ถูกนับ' },
     ])
   })
 
@@ -105,10 +105,10 @@ describe('summarizeWeek', () => {
     expect(result.warnings).toEqual([])
   })
 
-  it('เวลาออกก่อนเวลาเข้า: ไม่นับชั่วโมง และมีคำเตือน (AC8)', () => {
+  it('เวลาออกก่อนเวลาเข้า: ไม่นับชั่วโมง ไม่นับสาย และมีคำเตือน (AC8)', () => {
     const result = summarizeWeek([row('2026-11-23', '16:00', '08:00')])
 
-    expect(result.employees[0]?.totalHours).toBe(0)
+    expect(result.employees[0]).toMatchObject({ totalHours: 0, lateCount: 0 })
     expect(result.warnings[0]?.message).toBe('เวลาออกก่อนเวลาเข้า ชั่วโมงของวันนี้ไม่ถูกนับ')
   })
 
@@ -134,7 +134,7 @@ describe('summarizeWeek', () => {
 
     expect(result.warnings).toContainEqual({
       name: '-',
-      date: '2026-11-23 ถึง 2026-11-30',
+      date: '23 พ.ย. 2569 ถึง 30 พ.ย. 2569',
       message: 'ไฟล์มีข้อมูลเกิน 1 สัปดาห์ ตรวจสอบว่าเลือกไฟล์ถูกหรือไม่',
     })
   })
