@@ -6,6 +6,27 @@ const toMinutes = (time: string): number => {
   return hours * 60 + minutes
 }
 
+const THAI_MONTHS = [
+  'ม.ค.',
+  'ก.พ.',
+  'มี.ค.',
+  'เม.ย.',
+  'พ.ค.',
+  'มิ.ย.',
+  'ก.ค.',
+  'ส.ค.',
+  'ก.ย.',
+  'ต.ค.',
+  'พ.ย.',
+  'ธ.ค.',
+]
+
+export const toThaiDate = (isoDate: string): string => {
+  const [year, month, day] = isoDate.split('-').map(Number)
+  if (!year || !month || !day) return isoDate
+  return `${day} ${THAI_MONTHS[month - 1]} ${year + 543}`
+}
+
 const round2 = (value: number): number => Math.round(value * 100) / 100
 
 const groupBy = <T>(items: T[], key: (item: T) => string): Map<string, T[]> => {
@@ -17,7 +38,8 @@ const groupBy = <T>(items: T[], key: (item: T) => string): Map<string, T[]> => {
 }
 
 function workedHours(record: AttendanceRecord, warnings: RowWarning[]): number {
-  const warn = (message: string) => warnings.push({ name: record.name, date: record.date, message })
+  const warn = (message: string) =>
+    warnings.push({ name: record.name, date: toThaiDate(record.date), message })
 
   if (record.clockIn === '' && record.clockOut === '') return 0
   if (record.clockOut === '') {
@@ -52,7 +74,10 @@ function summarizeEmployee(records: AttendanceRecord[], warnings: RowWarning[]):
     totalHours += dayHours
     overtimeHours += Math.max(0, dayHours - STANDARD_HOURS_PER_DAY)
 
-    const clockIns = attended.map((r) => r.clockIn).filter((time) => time !== '')
+    const clockIns = attended
+      .filter((r) => r.clockOut === '' || toMinutes(r.clockOut) > toMinutes(r.clockIn))
+      .map((r) => r.clockIn)
+      .filter((time) => time !== '')
     const firstIn = clockIns.sort()[0]
     if (firstIn !== undefined && toMinutes(firstIn) > toMinutes(WORK_START)) lateCount++
   }
@@ -94,7 +119,7 @@ function buildOverview(
   const mostOvertime = topBy(employees, 'overtimeHours')
 
   return [
-    `พนักงาน ${employees.length} คน ทำงานรวม ${totalHours} ชั่วโมง (${first} ถึง ${last})`,
+    `พนักงาน ${employees.length} คน ทำงานรวม ${totalHours} ชั่วโมง (${toThaiDate(first)} ถึง ${toThaiDate(last)})`,
     totalLate > 0 && mostLate
       ? `มาสายรวม ${totalLate} ครั้ง คนที่มาสายบ่อยที่สุดคือ ${mostLate.name} (${mostLate.lateCount} ครั้ง)`
       : 'สัปดาห์นี้ไม่มีใครมาสาย',
@@ -114,7 +139,7 @@ export function summarizeWeek(records: AttendanceRecord[]): WeeklySummary {
   if (records.length > 0 && daysBetween(first, last) >= 7) {
     warnings.push({
       name: '-',
-      date: `${first} ถึง ${last}`,
+      date: `${toThaiDate(first)} ถึง ${toThaiDate(last)}`,
       message: 'ไฟล์มีข้อมูลเกิน 1 สัปดาห์ ตรวจสอบว่าเลือกไฟล์ถูกหรือไม่',
     })
   }
