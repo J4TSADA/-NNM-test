@@ -45,7 +45,7 @@ function renderSummary(target: HTMLElement, summary: WeeklySummary) {
 
 function showResult(target: HTMLElement, csvText: string) {
   try {
-    renderSummary(target, summarizeWeek(parseAttendanceCsv(csvText)))
+    renderSummary(target, summarizeWeek(parseAttendanceCsv(csvText).records))
   } catch (error) {
     const message = error instanceof Error ? error.message : 'อ่านไฟล์ไม่สำเร็จ'
     target.replaceChildren(el('p', message, 'error'))

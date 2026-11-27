@@ -65,5 +65,5 @@ export function summarizeWeek(records: AttendanceRecord[]): WeeklySummary {
   }
 
   const employees = [...byEmployee.values()].map(summarizeEmployee)
-  return { employees, overview: buildOverview(employees, records) }
+  return { employees, overview: buildOverview(employees, records), warnings: [] }
 }
