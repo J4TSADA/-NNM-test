@@ -97,11 +97,7 @@ function renderError(message: string) {
   box.append(
     el('h2', 'สรุปไฟล์นี้ไม่ได้'),
     el('p', message),
-    el(
-      'p',
-      'ไฟล์ต้องเป็น .csv และมีคอลัมน์ ชื่อ, วันที่, เวลาเข้า, เวลาออก ลองเปิดไฟล์ใน Excel แล้วเลือกบันทึกเป็น CSV อีกครั้ง',
-      'help',
-    ),
+    el('p', 'ถ้าหัวคอลัมน์ในไฟล์ใช้ชื่ออื่น ให้แก้หัวคอลัมน์ใน Excel แล้วบันทึกเป็น CSV อีกครั้ง', 'help'),
   )
   return box
 }
@@ -124,15 +120,21 @@ if (app) {
   const sampleButton = el('button', 'ลองด้วยไฟล์ตัวอย่าง', 'link-button')
   sampleButton.type = 'button'
 
+  const columns = el('div', undefined, 'columns')
+  columns.append(el('span', 'ไฟล์ต้องมีคอลัมน์', 'columns-label'))
+  ;['ชื่อ', 'วันที่', 'เวลาเข้า', 'เวลาออก'].forEach((name) => columns.append(el('span', name, 'chip')))
+  columns.append(el('span', 'ส่วนรหัสพนักงานจะมีหรือไม่มีก็ได้', 'columns-note'))
+
   const intake = el('section', undefined, 'intake')
-  intake.append(dropzone, sampleButton)
+  intake.append(dropzone, columns, sampleButton)
 
   const fileBar = el('div', undefined, 'file-bar')
   fileBar.hidden = true
   const fileName = el('span', undefined, 'file-name')
   const changeButton = el('button', 'เปลี่ยนไฟล์', 'secondary')
   changeButton.type = 'button'
-  fileBar.append(el('span', 'กำลังดูไฟล์', 'file-label'), fileName, changeButton)
+  const rowCount = el('span', undefined, 'file-label')
+  fileBar.append(el('span', 'กำลังดูไฟล์', 'file-label'), fileName, rowCount, changeButton)
 
   const result = el('div', undefined, 'result')
 
@@ -140,8 +142,10 @@ if (app) {
     fileName.textContent = name
     fileBar.hidden = false
     intake.hidden = true
+    rowCount.textContent = ''
     try {
       const parsed = parseAttendanceCsv(csvText)
+      rowCount.textContent = `(${parsed.records.length + parsed.warnings.length} แถว)`
       const summary = summarizeWeek(parsed.records)
       const warnings = [...parsed.warnings, ...summary.warnings]
       result.replaceChildren(

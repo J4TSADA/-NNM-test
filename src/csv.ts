@@ -14,6 +14,14 @@ const BOM = String.fromCharCode(0xfeff)
 
 const REQUIRED: Column[] = ['name', 'date', 'clock_in', 'clock_out']
 
+const COLUMN_LABELS: Record<Column, string> = {
+  employee_id: 'รหัสพนักงาน',
+  name: 'ชื่อ',
+  date: 'วันที่',
+  clock_in: 'เวลาเข้า',
+  clock_out: 'เวลาออก',
+}
+
 function splitCsvLine(line: string): string[] {
   const cells: string[] = []
   let current = ''
@@ -80,7 +88,7 @@ export function parseAttendanceCsv(text: string): ParseResult {
 
   const missing = REQUIRED.filter((column) => indexOf(column) === -1)
   if (missing.length > 0) {
-    throw new Error(`ไฟล์ไม่มีคอลัมน์: ${missing.join(', ')}`)
+    throw new Error(`ไฟล์ไม่มีคอลัมน์: ${missing.map((column) => COLUMN_LABELS[column]).join(', ')}`)
   }
   if (lines.length < 2) {
     throw new Error('ไฟล์ไม่มีข้อมูลลงเวลา')
