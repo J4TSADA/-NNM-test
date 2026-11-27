@@ -66,12 +66,26 @@ E01,สมใจ,2026-11-23,08:00,16:00
 - **ข้อความ commit:** commitlint บังคับรูปแบบ Conventional Commits
 - **CI:** `.github/workflows/ci.yml` รัน lint, format, typecheck, test และ build ทุก PR
 
-## Deploy
+## Deploy ขึ้น Alpha
 
-1. merge PR เข้า `main`
-2. สร้าง tag: `git tag v0.1.0 && git push origin v0.1.0`
-3. `c9n deploy --dry-run` ดูก่อนว่าจะ deploy อะไร
-4. `c9n deploy` ขึ้น Alpha
+Alpha ของโปรเจคนี้คือ GitHub Pages ของ repo ทุกครั้งที่มี tag `vX.Y.Z` ใหม่ workflow `.github/workflows/deploy-alpha.yml` จะรัน lint, typecheck และ test แล้ว build และเอาเว็บขึ้นให้อัตโนมัติ
+
+ตั้งค่าครั้งแรก (ทำครั้งเดียว)
+
+1. GitHub repo → Settings → Pages → Source เลือก **GitHub Actions**
+2. Settings → Environments → `github-pages` → Deployment branches and tags → เพิ่ม rule แบบ **Tag** ชื่อ `v*`
+3. ติดตั้ง CLI ของบริษัท `npm i -g @codepassion/cli` และ login `gh auth login` (c9n ใช้ `gh` เช็กว่า CI เขียว)
+
+ทุกครั้งที่จะ deploy (หลัง merge PR เข้า `main`)
+
+```bash
+git checkout main
+git pull
+c9n deploy -e alpha -v 0.1.0 --dry-run
+c9n deploy -e alpha -v 0.1.0
+```
+
+`c9n deploy` เป็นคนสร้าง tag และ push ให้ ห้ามสร้าง tag เองด้วย `git tag` รอบถัดไปไม่ต้องใส่ `-v` CLI จะเลือกเวอร์ชันถัดไปให้เอง ดูผลได้ที่แท็บ Actions ของ repo ลิงก์เว็บอยู่ในงาน `deploy`
 
 ก่อนขึ้น production ดู `docs/go-no-go.md`
 
