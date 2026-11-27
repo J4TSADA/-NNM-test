@@ -1,9 +1,9 @@
 import './style.css'
 import { parseAttendanceCsv } from './csv'
 import { summarizeWeek } from './summary'
-import type { WeeklySummary } from './types'
+import type { EmployeeSummary, RowWarning, WeeklySummary } from './types'
 
-const app = document.querySelector<HTMLDivElement>('#app')
+const app = document.querySelector<HTMLElement>('#app')
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -16,67 +16,181 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node
 }
 
-function renderSummary(target: HTMLElement, summary: WeeklySummary) {
-  const overview = el('ul', undefined, 'overview')
-  summary.overview.forEach((line) => overview.append(el('li', line)))
+const OVERVIEW_TONES = ['hours', 'late', 'ot'] as const
 
-  const table = el('table')
-  const headRow = el('tr')
-  ;['รหัส', 'ชื่อ', 'วันทำงาน', 'ชั่วโมงรวม', 'มาสาย (ครั้ง)', 'OT (ชั่วโมง)'].forEach((title) =>
-    headRow.append(el('th', title)),
-  )
-  table.append(el('thead'), el('tbody'))
-  table.tHead?.append(headRow)
-  summary.employees.forEach((employee) => {
-    const row = el('tr')
-    row.append(
-      el('td', employee.employeeId),
-      el('td', employee.name),
-      el('td', String(employee.workDays)),
-      el('td', String(employee.totalHours)),
-      el('td', String(employee.lateCount), employee.lateCount > 0 ? 'warn' : undefined),
-      el('td', String(employee.overtimeHours)),
-    )
-    table.tBodies[0]?.append(row)
-  })
-
-  target.replaceChildren(el('h2', 'ภาพรวมสัปดาห์นี้'), overview, el('h2', 'สรุปรายคน'), table)
+function renderOverview(overview: WeeklySummary['overview']) {
+  const section = el('section', undefined, 'overview')
+  section.setAttribute('aria-label', 'ภาพรวมสัปดาห์')
+  section.append(el('h2', 'ภาพรวมสัปดาห์นี้'))
+  const list = el('ul')
+  overview.forEach((line, index) => list.append(el('li', line, OVERVIEW_TONES[index])))
+  section.append(list)
+  return section
 }
 
-function showResult(target: HTMLElement, csvText: string) {
-  try {
-    renderSummary(target, summarizeWeek(parseAttendanceCsv(csvText)))
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'อ่านไฟล์ไม่สำเร็จ'
-    target.replaceChildren(el('p', message, 'error'))
+function renderWarnings(warnings: RowWarning[]) {
+  const section = el('section', undefined, 'warnings')
+  section.setAttribute('role', 'status')
+  section.append(el('h2', `มี ${warnings.length} แถวที่ควรตรวจในไฟล์`))
+  const list = el('ul')
+  warnings.forEach((warning) => {
+    const item = el('li')
+    item.append(el('strong', `${warning.name} ${warning.date}`), el('span', warning.message))
+    list.append(item)
+  })
+  section.append(list)
+  return section
+}
+
+function numberCell(value: number, tone?: 'late' | 'ot') {
+  const cell = el('td', undefined, 'num')
+  if (tone && value > 0) {
+    cell.append(el('span', String(value), `badge ${tone}`))
+  } else {
+    cell.append(el('span', String(value), value === 0 ? 'zero' : undefined))
   }
+  return cell
+}
+
+function renderTable(employees: EmployeeSummary[]) {
+  const section = el('section', undefined, 'people')
+  section.append(el('h2', 'สรุปรายคน'))
+
+  const scroller = el('div', undefined, 'table-scroll')
+  const table = el('table')
+  const head = el('tr')
+  head.append(
+    el('th', 'ชื่อ'),
+    el('th', 'วันทำงาน', 'num'),
+    el('th', 'ชั่วโมงรวม', 'num'),
+    el('th', 'มาสาย (ครั้ง)', 'num'),
+    el('th', 'OT (ชั่วโมง)', 'num'),
+  )
+  table.createTHead().append(head)
+
+  const body = table.createTBody()
+  employees.forEach((employee) => {
+    const nameCell = el('td', undefined, 'name')
+    nameCell.append(el('span', employee.name))
+    if (employee.employeeId !== employee.name) {
+      nameCell.append(el('small', employee.employeeId))
+    }
+    const row = el('tr')
+    row.append(
+      nameCell,
+      numberCell(employee.workDays),
+      numberCell(employee.totalHours),
+      numberCell(employee.lateCount, 'late'),
+      numberCell(employee.overtimeHours, 'ot'),
+    )
+    body.append(row)
+  })
+
+  scroller.append(table)
+  section.append(scroller)
+  return section
+}
+
+function renderError(message: string) {
+  const box = el('section', undefined, 'error')
+  box.setAttribute('role', 'alert')
+  box.append(
+    el('h2', 'สรุปไฟล์นี้ไม่ได้'),
+    el('p', message),
+    el('p', 'ถ้าหัวคอลัมน์ในไฟล์ใช้ชื่ออื่น ให้แก้หัวคอลัมน์ใน Excel แล้วบันทึกเป็น CSV อีกครั้ง', 'help'),
+  )
+  return box
 }
 
 if (app) {
-  const result = el('section')
   const input = el('input')
   input.type = 'file'
   input.accept = '.csv,text/csv'
-  input.addEventListener('change', async () => {
-    const file = input.files?.[0]
-    if (file) showResult(result, await file.text())
-  })
+  input.className = 'visually-hidden'
+  input.id = 'csv-file'
 
-  const sampleButton = el('button', 'ลองด้วยไฟล์ตัวอย่าง')
+  const dropzone = el('label', undefined, 'dropzone')
+  dropzone.htmlFor = 'csv-file'
+  dropzone.append(
+    el('span', 'วางไฟล์ลงเวลาที่นี่', 'drop-title'),
+    el('span', 'หรือคลิกเพื่อเลือกไฟล์ .csv ของ 1 สัปดาห์', 'drop-sub'),
+    input,
+  )
+
+  const sampleButton = el('button', 'ลองด้วยไฟล์ตัวอย่าง', 'link-button')
   sampleButton.type = 'button'
+
+  const columns = el('div', undefined, 'columns')
+  columns.append(el('span', 'ไฟล์ต้องมีคอลัมน์', 'columns-label'))
+  ;['ชื่อ', 'วันที่', 'เวลาเข้า', 'เวลาออก'].forEach((name) => columns.append(el('span', name, 'chip')))
+  columns.append(el('span', 'ส่วนรหัสพนักงานจะมีหรือไม่มีก็ได้', 'columns-note'))
+
+  const intake = el('section', undefined, 'intake')
+  intake.append(dropzone, columns, sampleButton)
+
+  const fileBar = el('div', undefined, 'file-bar')
+  fileBar.hidden = true
+  const fileName = el('span', undefined, 'file-name')
+  const changeButton = el('button', 'เปลี่ยนไฟล์', 'secondary')
+  changeButton.type = 'button'
+  const rowCount = el('span', undefined, 'file-label')
+  fileBar.append(el('span', 'กำลังดูไฟล์', 'file-label'), fileName, rowCount, changeButton)
+
+  const result = el('div', undefined, 'result')
+
+  const show = (name: string, csvText: string) => {
+    fileName.textContent = name
+    fileBar.hidden = false
+    intake.hidden = true
+    rowCount.textContent = ''
+    try {
+      const parsed = parseAttendanceCsv(csvText)
+      rowCount.textContent = `(${parsed.records.length + parsed.warnings.length} แถว)`
+      const summary = summarizeWeek(parsed.records)
+      const warnings = [...parsed.warnings, ...summary.warnings]
+      result.replaceChildren(
+        renderOverview(summary.overview),
+        ...(warnings.length > 0 ? [renderWarnings(warnings)] : []),
+        renderTable(summary.employees),
+      )
+    } catch (error) {
+      result.replaceChildren(renderError(error instanceof Error ? error.message : 'อ่านไฟล์ไม่สำเร็จ'))
+    }
+    result.focus()
+  }
+
+  const readFile = async (file: File | undefined) => {
+    if (file) show(file.name, await file.text())
+  }
+
+  input.addEventListener('change', () => {
+    void readFile(input.files?.[0])
+    input.value = ''
+  })
+  dropzone.addEventListener('dragover', (event) => {
+    event.preventDefault()
+    dropzone.classList.add('dragging')
+  })
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragging'))
+  dropzone.addEventListener('drop', (event) => {
+    event.preventDefault()
+    dropzone.classList.remove('dragging')
+    void readFile(event.dataTransfer?.files[0])
+  })
   sampleButton.addEventListener('click', async () => {
     const response = await fetch(`${import.meta.env.BASE_URL}sample-week.csv`)
-    showResult(result, await response.text())
+    show('sample-week.csv (ไฟล์ตัวอย่าง)', await response.text())
   })
+  changeButton.addEventListener('click', () => input.click())
 
-  const label = el('label', 'เลือกไฟล์ลงเวลา (.csv) 1 สัปดาห์ ')
-  label.append(input)
+  result.tabIndex = -1
 
-  app.append(
-    el('h1', 'สรุปลงเวลาแม่บ้าน · ตลาดหนองเหนียว'),
-    el('p', 'อัปโหลดไฟล์แล้วได้สรุปทันที ไม่ต้องสั่ง AI ใหม่ทุกสัปดาห์', 'hint'),
-    label,
-    sampleButton,
-    result,
+  const header = el('header', undefined, 'masthead')
+  header.append(
+    el('p', 'ตลาดหนองเหนียว', 'market'),
+    el('h1', 'สรุปลงเวลาแม่บ้านรายสัปดาห์'),
+    el('p', 'วางไฟล์ลงเวลาแล้วได้สรุปทันที กติกาเดิมทุกสัปดาห์ ไม่ต้องสั่ง AI ใหม่', 'lede'),
   )
+
+  app.append(header, intake, fileBar, result)
 }

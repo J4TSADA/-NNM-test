@@ -1,31 +1,94 @@
 import { STANDARD_HOURS_PER_DAY, WORK_START } from './rules'
-import type { AttendanceRecord, EmployeeSummary, WeeklySummary } from './types'
+import type { AttendanceRecord, EmployeeSummary, RowWarning, WeeklySummary } from './types'
 
 const toMinutes = (time: string): number => {
   const [hours = 0, minutes = 0] = time.split(':').map(Number)
   return hours * 60 + minutes
 }
 
+const THAI_MONTHS = [
+  'ม.ค.',
+  'ก.พ.',
+  'มี.ค.',
+  'เม.ย.',
+  'พ.ค.',
+  'มิ.ย.',
+  'ก.ค.',
+  'ส.ค.',
+  'ก.ย.',
+  'ต.ค.',
+  'พ.ย.',
+  'ธ.ค.',
+]
+
+export const toThaiDate = (isoDate: string): string => {
+  const [year, month, day] = isoDate.split('-').map(Number)
+  if (!year || !month || !day) return isoDate
+  return `${day} ${THAI_MONTHS[month - 1]} ${year + 543}`
+}
+
 const round2 = (value: number): number => Math.round(value * 100) / 100
 
-function summarizeEmployee(records: AttendanceRecord[]): EmployeeSummary {
+const groupBy = <T>(items: T[], key: (item: T) => string): Map<string, T[]> => {
+  const groups = new Map<string, T[]>()
+  for (const item of items) {
+    groups.set(key(item), [...(groups.get(key(item)) ?? []), item])
+  }
+  return groups
+}
+
+function workedHours(record: AttendanceRecord, warnings: RowWarning[]): number {
+  const warn = (message: string) =>
+    warnings.push({ name: record.name, date: toThaiDate(record.date), message })
+
+  if (record.clockIn === '' && record.clockOut === '') return 0
+  if (record.clockOut === '') {
+    warn('ไม่มีเวลาออก ชั่วโมงของวันนี้ไม่ถูกนับ')
+    return 0
+  }
+  if (record.clockIn === '') {
+    warn('ไม่มีเวลาเข้า ชั่วโมงของวันนี้ไม่ถูกนับ')
+    return 0
+  }
+  const minutes = toMinutes(record.clockOut) - toMinutes(record.clockIn)
+  if (minutes <= 0) {
+    warn('เวลาออกก่อนเวลาเข้า ชั่วโมงของวันนี้ไม่ถูกนับ')
+    return 0
+  }
+  return minutes / 60
+}
+
+function summarizeEmployee(records: AttendanceRecord[], warnings: RowWarning[]): EmployeeSummary {
   const first = records[0]
-  const workedHoursPerDay = records.map(
-    (record) => (toMinutes(record.clockOut) - toMinutes(record.clockIn)) / 60,
-  )
+  let workDays = 0
+  let totalHours = 0
+  let lateCount = 0
+  let overtimeHours = 0
+
+  for (const dayRecords of groupBy(records, (record) => record.date).values()) {
+    const attended = dayRecords.filter((r) => r.clockIn !== '' || r.clockOut !== '')
+    if (attended.length === 0) continue
+
+    workDays++
+    const dayHours = attended.reduce((sum, record) => sum + workedHours(record, warnings), 0)
+    totalHours += dayHours
+    overtimeHours += Math.max(0, dayHours - STANDARD_HOURS_PER_DAY)
+
+    const clockIns = attended
+      .filter((r) => r.clockOut === '' || toMinutes(r.clockOut) > toMinutes(r.clockIn))
+      .map((r) => r.clockIn)
+      .filter((time) => time !== '')
+    const firstIn = clockIns.sort()[0]
+    if (firstIn !== undefined && toMinutes(firstIn) > toMinutes(WORK_START)) lateCount++
+  }
 
   return {
     employeeId: first?.employeeId ?? '',
     name: first?.name ?? '',
-    workDays: new Set(records.map((record) => record.date)).size,
-    totalHours: round2(workedHoursPerDay.reduce((sum, hours) => sum + hours, 0)),
-    lateCount: records.filter((record) => toMinutes(record.clockIn) > toMinutes(WORK_START)).length,
-    overtimeHours: round2(
-      workedHoursPerDay.reduce(
-        (sum, hours) => sum + Math.max(0, hours - STANDARD_HOURS_PER_DAY),
-        0,
-      ),
-    ),
+    workDays,
+    totalHours: round2(totalHours),
+    lateCount,
+    overtimeHours: round2(overtimeHours),
   }
 }
 
@@ -36,11 +99,19 @@ function topBy(employees: EmployeeSummary[], key: 'lateCount' | 'overtimeHours')
   )
 }
 
+function dateRange(records: AttendanceRecord[]): { first: string; last: string } {
+  const dates = records.map((record) => record.date).sort()
+  return { first: dates[0] ?? '-', last: dates.at(-1) ?? '-' }
+}
+
+const daysBetween = (from: string, to: string) =>
+  (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000
+
 function buildOverview(
   employees: EmployeeSummary[],
   records: AttendanceRecord[],
 ): [string, string, string] {
-  const dates = records.map((record) => record.date).sort()
+  const { first, last } = dateRange(records)
   const totalHours = round2(employees.reduce((sum, e) => sum + e.totalHours, 0))
   const totalLate = employees.reduce((sum, e) => sum + e.lateCount, 0)
   const totalOvertime = round2(employees.reduce((sum, e) => sum + e.overtimeHours, 0))
@@ -48,7 +119,7 @@ function buildOverview(
   const mostOvertime = topBy(employees, 'overtimeHours')
 
   return [
-    `พนักงาน ${employees.length} คน ทำงานรวม ${totalHours} ชั่วโมง (${dates[0]} ถึง ${dates.at(-1)})`,
+    `พนักงาน ${employees.length} คน ทำงานรวม ${totalHours} ชั่วโมง (${toThaiDate(first)} ถึง ${toThaiDate(last)})`,
     totalLate > 0 && mostLate
       ? `มาสายรวม ${totalLate} ครั้ง คนที่มาสายบ่อยที่สุดคือ ${mostLate.name} (${mostLate.lateCount} ครั้ง)`
       : 'สัปดาห์นี้ไม่มีใครมาสาย',
@@ -59,11 +130,19 @@ function buildOverview(
 }
 
 export function summarizeWeek(records: AttendanceRecord[]): WeeklySummary {
-  const byEmployee = new Map<string, AttendanceRecord[]>()
-  for (const record of records) {
-    byEmployee.set(record.employeeId, [...(byEmployee.get(record.employeeId) ?? []), record])
+  const warnings: RowWarning[] = []
+  const employees = [...groupBy(records, (record) => record.employeeId).values()].map(
+    (employeeRecords) => summarizeEmployee(employeeRecords, warnings),
+  )
+
+  const { first, last } = dateRange(records)
+  if (records.length > 0 && daysBetween(first, last) >= 7) {
+    warnings.push({
+      name: '-',
+      date: `${toThaiDate(first)} ถึง ${toThaiDate(last)}`,
+      message: 'ไฟล์มีข้อมูลเกิน 1 สัปดาห์ ตรวจสอบว่าเลือกไฟล์ถูกหรือไม่',
+    })
   }
 
-  const employees = [...byEmployee.values()].map(summarizeEmployee)
-  return { employees, overview: buildOverview(employees, records) }
+  return { employees, overview: buildOverview(employees, records), warnings }
 }

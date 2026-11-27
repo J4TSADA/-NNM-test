@@ -2,9 +2,18 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { parseAttendanceCsv } from './csv'
 import { summarizeWeek } from './summary'
+import type { AttendanceRecord } from './types'
 
 const sample = readFileSync(new URL('../fixtures/sample-week.csv', import.meta.url), 'utf8')
-const summary = () => summarizeWeek(parseAttendanceCsv(sample))
+const summary = () => summarizeWeek(parseAttendanceCsv(sample).records)
+
+const row = (date: string, clockIn: string, clockOut: string): AttendanceRecord => ({
+  employeeId: 'X',
+  name: 'ทดสอบ',
+  date,
+  clockIn,
+  clockOut,
+})
 
 describe('summarizeWeek', () => {
   it('สรุปครบทุกคนในไฟล์ (AC1)', () => {
@@ -41,10 +50,9 @@ describe('summarizeWeek', () => {
   })
 
   it('เข้างานตรง 08:00 พอดีไม่นับว่าสาย แต่ 08:01 นับว่าสาย (AC4)', () => {
-    const base = { employeeId: 'X', name: 'ทดสอบ', clockOut: '16:00' }
     const result = summarizeWeek([
-      { ...base, date: '2026-11-23', clockIn: '08:00' },
-      { ...base, date: '2026-11-24', clockIn: '08:01' },
+      row('2026-11-23', '08:00', '16:00'),
+      row('2026-11-24', '08:01', '16:00'),
     ])
 
     expect(result.employees[0]?.lateCount).toBe(1)
@@ -52,7 +60,7 @@ describe('summarizeWeek', () => {
 
   it('มีภาพรวม 3 บรรทัด (AC6)', () => {
     expect(summary().overview).toEqual([
-      'พนักงาน 3 คน ทำงานรวม 113.5 ชั่วโมง (2026-11-23 ถึง 2026-11-28)',
+      'พนักงาน 3 คน ทำงานรวม 113.5 ชั่วโมง (23 พ.ย. 2569 ถึง 28 พ.ย. 2569)',
       'มาสายรวม 5 ครั้ง คนที่มาสายบ่อยที่สุดคือ บุญมี (3 ครั้ง)',
       'OT รวม 4.5 ชั่วโมง คนที่ทำ OT มากที่สุดคือ สมใจ (3 ชั่วโมง)',
     ])
@@ -60,5 +68,74 @@ describe('summarizeWeek', () => {
 
   it('สรุปไฟล์เดิมซ้ำได้ผลเหมือนเดิมทุกครั้ง (AC7)', () => {
     expect(summary()).toEqual(summary())
+  })
+
+  it('ไฟล์ตัวอย่างไม่มีคำเตือน', () => {
+    expect(summary().warnings).toEqual([])
+  })
+
+  it('ไม่มีเวลาออก: นับเป็นวันทำงาน นับสายได้ แต่ไม่นับชั่วโมง และมีคำเตือน (AC8)', () => {
+    const result = summarizeWeek([
+      row('2026-11-23', '08:00', '16:00'),
+      row('2026-11-24', '08:20', ''),
+    ])
+
+    expect(result.employees[0]).toMatchObject({
+      workDays: 2,
+      totalHours: 8,
+      lateCount: 1,
+      overtimeHours: 0,
+    })
+    expect(result.warnings).toEqual([
+      { name: 'ทดสอบ', date: '24 พ.ย. 2569', message: 'ไม่มีเวลาออก ชั่วโมงของวันนี้ไม่ถูกนับ' },
+    ])
+  })
+
+  it('ไม่มีเวลาเข้า: นับเป็นวันทำงาน แต่ไม่นับชั่วโมง และมีคำเตือน (AC8)', () => {
+    const result = summarizeWeek([row('2026-11-23', '', '16:00')])
+
+    expect(result.employees[0]).toMatchObject({ workDays: 1, totalHours: 0, lateCount: 0 })
+    expect(result.warnings[0]?.message).toBe('ไม่มีเวลาเข้า ชั่วโมงของวันนี้ไม่ถูกนับ')
+  })
+
+  it('ไม่มีทั้งเวลาเข้าและออก: ไม่นับเป็นวันทำงาน (AC8)', () => {
+    const result = summarizeWeek([row('2026-11-23', '08:00', '16:00'), row('2026-11-24', '', '')])
+
+    expect(result.employees[0]?.workDays).toBe(1)
+    expect(result.warnings).toEqual([])
+  })
+
+  it('เวลาออกก่อนเวลาเข้า: ไม่นับชั่วโมง ไม่นับสาย และมีคำเตือน (AC8)', () => {
+    const result = summarizeWeek([row('2026-11-23', '16:00', '08:00')])
+
+    expect(result.employees[0]).toMatchObject({ totalHours: 0, lateCount: 0 })
+    expect(result.warnings[0]?.message).toBe('เวลาออกก่อนเวลาเข้า ชั่วโมงของวันนี้ไม่ถูกนับ')
+  })
+
+  it('ลงเวลา 2 รอบในวันเดียว: OT คิดจากชั่วโมงรวมของวัน และนับสายครั้งเดียว (AC9)', () => {
+    const result = summarizeWeek([
+      row('2026-11-23', '08:30', '12:00'),
+      row('2026-11-23', '13:00', '19:00'),
+    ])
+
+    expect(result.employees[0]).toMatchObject({
+      workDays: 1,
+      totalHours: 9.5,
+      lateCount: 1,
+      overtimeHours: 1.5,
+    })
+  })
+
+  it('ไฟล์มีข้อมูลเกิน 7 วัน: มีคำเตือน (AC10)', () => {
+    const result = summarizeWeek([
+      row('2026-11-23', '08:00', '16:00'),
+      row('2026-11-30', '08:00', '16:00'),
+    ])
+
+    expect(result.warnings).toContainEqual({
+      name: '-',
+      date: '23 พ.ย. 2569 ถึง 30 พ.ย. 2569',
+      message: 'ไฟล์มีข้อมูลเกิน 1 สัปดาห์ ตรวจสอบว่าเลือกไฟล์ถูกหรือไม่',
+    })
   })
 })

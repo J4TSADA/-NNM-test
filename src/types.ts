@@ -6,6 +6,17 @@ export interface AttendanceRecord {
   clockOut: string
 }
 
+export interface RowWarning {
+  name: string
+  date: string
+  message: string
+}
+
+export interface ParseResult {
+  records: AttendanceRecord[]
+  warnings: RowWarning[]
+}
+
 export interface EmployeeSummary {
   employeeId: string
   name: string
@@ -18,4 +29,5 @@ export interface EmployeeSummary {
 export interface WeeklySummary {
   employees: EmployeeSummary[]
   overview: [string, string, string]
+  warnings: RowWarning[]
 }
